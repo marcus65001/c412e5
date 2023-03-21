@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import rospy
 from duckietown.dtros import DTROS, NodeType, TopicType
-from sensor_msgs.msg import CompressedImage, CameraInfo
+from sensor_msgs.msg import CompressedImage
 import numpy as np
 import cv2
 from cv_bridge import CvBridge
-from std_msgs.msg import String, Integer
+from std_msgs.msg import String, Int8
 # nn
 from torch import nn
 import pytorch_lightning as pl
@@ -43,12 +43,12 @@ class InferenceNode(DTROS):
         self.veh = rospy.get_param("~veh")
 
         # subscriber
-        self.sub_roi = rospy.Subscriber('~roi', CompressedImage, self.cb_img)  # image topic
+        self.sub_roi = rospy.Subscriber('~cam_roi', CompressedImage, self.cb_img)  # image topic
 
         # publisher
         self.pub_digit = rospy.Publisher(
             "~digit",
-            Integer,
+            Int8,
             queue_size=1,
         )
 

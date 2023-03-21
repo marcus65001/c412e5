@@ -1,0 +1,14 @@
+<launch>
+    <arg name="veh" doc="Name of vehicle. ex: megaman"/>
+    <arg name="pkg_name" value="detect"/>
+    <arg name="node_name" default="inference_node"/>
+    <arg name="param_file_name" default="default" doc="Specify a param file. ex: experiment_1."/>
+
+
+    <group ns="remote">
+        <node name="$(arg node_name)" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" required="true">
+            <param name="veh" value="$(arg veh)" />
+            <remap from="~cam_roi" to="/$(arg veh)/apriltag_node/image/compressed"/>
+        </node>
+    </group>
+</launch>
