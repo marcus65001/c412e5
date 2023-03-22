@@ -6,8 +6,12 @@
 
 
     <group ns="remote">
+<!--         <node name="test_node" pkg="$(arg pkg_name)" type="test_node.py" output="screen" required="true"> -->
+<!--             <remap from="~digit" to="/remote/inference_node/digit"/> -->
+<!--         </node> -->
         <node name="$(arg node_name)" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" required="true">
             <param name="veh" value="$(arg veh)" />
+<!--             <remap from="~cam_roi" to="/remote/test_node/image/compressed"/> -->
             <remap from="~cam_roi" to="/$(arg veh)/apriltag_node/image/compressed"/>
         </node>
     </group>

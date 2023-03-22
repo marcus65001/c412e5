@@ -7,6 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 from std_msgs.msg import String, Int8
 # nn
+import torch
 from torch import nn
 import pytorch_lightning as pl
 from torchvision import transforms
@@ -68,6 +69,7 @@ class InferenceNode(DTROS):
             transforms.Grayscale(),
             transforms.ToTensor()
         ])
+        self.log("Node initialized")
 
     def read_image(self, msg):
         try:
@@ -80,22 +82,25 @@ class InferenceNode(DTROS):
             return np.array([])
 
     def cb_img(self, msg):
+        self.log("image callback")
         # image callback
         if self._bridge:
             t_img=self.read_image(msg)
             self.image = self._transforms(PIL.Image.fromarray(t_img))
 
     def get_prediction(self, x: pl.LightningModule):
-        self._model.freeze()  # prepares model for predicting
-        probabilities = torch.softmax(self._model(x), dim=1)
+        batch=x.unsqueeze(0)
+        with torch.no_grad():
+            self._model.eval()
+            probabilities = torch.softmax(self._model(batch), dim=1)
         predicted_class = torch.argmax(probabilities, dim=1)
-        return predicted_class, probabilities
+        return predicted_class.to('cpu').numpy()[0], probabilities.to('cpu').numpy()[0]
 
     def inference(self):
         img = self.image
         self.image = None
         pred,prob=self.get_prediction(img)
-        msg=Integer()
+        msg=Int8()
         msg.data=-1
         if prob[pred]>0.5:
             msg.data = pred

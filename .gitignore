@@ -7,3 +7,9 @@ html/*
 
 # otherwise CI thinks index not clean
 *.resolved
+
+.idea
+build
+devel
+.catkin_workspace
+packages/CMakeLists.txt
