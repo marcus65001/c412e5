@@ -276,6 +276,7 @@ class TagDetectorNode(DTROS):
                 g_image = cv2.cvtColor(ud_image, cv2.COLOR_BGR2GRAY)
                 # tag detection
                 td_image = self.tag_detect(g_image)
+                # crop roi
                 if self.tag_det is not None:
                     self.number_roi=self.number_roi_detect(ud_image)
                 # publish
