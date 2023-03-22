@@ -239,11 +239,12 @@ class TagDetectorNode(DTROS):
         # image callback
         if self._bridge and (self.ci_cam_matrix is not None):
             # rectify
-            self.image=self.read_image(msg)
+            uimg=cv2.UMat(self.read_image(msg))
+            self.image=uimg
 
     def number_roi_detect(self, img):
-        uimg = cv2.UMat(img)
-        img_h = cv2.cvtColor(uimg, cv2.COLOR_BGR2HSV)
+        # uimg = cv2.UMat(img)
+        img_h = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(img_h, self.num_roi_l, self.num_roi_h)
 
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -279,7 +280,8 @@ class TagDetectorNode(DTROS):
                     self.number_roi=self.number_roi_detect(ud_image)
                 # publish
                 if self.number_roi is not None:
-                    image_msg = self._bridge.cv2_to_compressed_imgmsg(self.number_roi, dst_format="jpeg")
+                    mat=cv2.UMat.get(self.number_roi)
+                    image_msg = self._bridge.cv2_to_compressed_imgmsg(mat, dst_format="jpeg")
                     self.pub.publish(image_msg)
                     self.number_roi=None
                 rate.sleep()
