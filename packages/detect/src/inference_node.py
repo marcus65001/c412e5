@@ -100,6 +100,7 @@ class InferenceNode(DTROS):
         img = self.image
         self.image = None
         pred,prob=self.get_prediction(img)
+        self.log("{} - {}".format(pred,prob))
         msg=Int8()
         msg.data=-1
         if prob[pred]>0.5:
@@ -109,7 +110,7 @@ class InferenceNode(DTROS):
 
 
     def run(self):
-        rate = rospy.Rate(2)
+        rate = rospy.Rate(4)
         while not rospy.is_shutdown():
             if self.image is not None:
                 self.inference()
