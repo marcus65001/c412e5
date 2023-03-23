@@ -106,10 +106,13 @@ class TagDetectorNode(DTROS):
 
     def undistort(self, u_img):
         h, w = u_img.shape[:2]
+        # h=self.cam_info.height
+        # w=self.cam_info.width
         newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.ci_cam_matrix, self.ci_cam_dist, (w, h), 1, (w, h))
         dst = cv2.undistort(u_img, self.ci_cam_matrix, self.ci_cam_dist, None, newcameramtx)
         x, y, w, h = roi
         dst = dst[y:y + h, x:x + w]
+        # dst = cv2.UMat(dst,[y,y+h],[x,x+w])
         return dst
 
     def tag_id_to_color(self, id):
@@ -239,29 +242,34 @@ class TagDetectorNode(DTROS):
         # image callback
         if self._bridge and (self.ci_cam_matrix is not None):
             # rectify
-            uimg=cv2.UMat(self.read_image(msg))
-            self.image=uimg
+            # uimg=cv2.UMat(self.read_image(msg))
+            self.image=self.read_image(msg)
 
     def number_roi_detect(self, img):
         # uimg = cv2.UMat(img)
         img_h = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        H, W = img_h.shape[:2]
         mask = cv2.inRange(img_h, self.num_roi_l, self.num_roi_h)
 
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         if len(contours) != 0:
+            self.log("number roi")
             try:
                 max_contour = max(contours, key=cv2.contourArea)
                 if cv2.contourArea(max_contour) > 500 * 500:
+                    self.log("too large")
                     return None
                 x, y, w, h = cv2.boundingRect(max_contour)
-                cv2.rectangle(img_h, (x + 10, y + 10), (x + w - 10, y + h - 10), (0, 255, 0), 2)
-                crop = cv2.UMat(img_h, [y + 10, y + h - 10], [x + 10, x + w - 10])
+                # cv2.rectangle(img_h, (x + 10, y + 10), (x + w - 10, y + h - 10), (0, 255, 0), 2)
+                # crop = cv2.UMat(img_h, [y + 10, y + h - 10], [x + 10, x + w - 10])
+                crop=img_h[max(0,y-2):min(H,y + h+2), max(0,x - 2): min(W,x + w +2)]
                 crop = cv2.cvtColor(crop, cv2.COLOR_HSV2BGR)
-                if (w * h < 20000) or (not (0.5 < w / h < 2.0)):
-                    return None
-            except:
-                pass
+                if (w * h < 30*30) or (not (0.5 < w / h < 2.0)):
+                    self.log("too small/ratio {} {}".format(w,h))
+                    return crop
+            except Exception as e:
+                self.log(e)
         return crop
 
     def run(self):
@@ -269,8 +277,6 @@ class TagDetectorNode(DTROS):
         while not rospy.is_shutdown():
             if self.image is not None:
                 # publish image
-                if not self.image.size:
-                    return
                 ud_image = self.undistort(self.image)
                 # grayscale
                 g_image = cv2.cvtColor(ud_image, cv2.COLOR_BGR2GRAY)
@@ -281,7 +287,8 @@ class TagDetectorNode(DTROS):
                     self.number_roi=self.number_roi_detect(ud_image)
                 # publish
                 if self.number_roi is not None:
-                    mat=cv2.UMat.get(self.number_roi)
+                    self.log("image pub")
+                    mat=self.number_roi
                     image_msg = self._bridge.cv2_to_compressed_imgmsg(mat, dst_format="jpeg")
                     self.pub.publish(image_msg)
                     self.number_roi=None
