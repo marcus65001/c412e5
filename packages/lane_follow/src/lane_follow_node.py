@@ -37,9 +37,9 @@ class LaneFollowNode(DTROS):
                                     self.callback,
                                     queue_size=1,
                                     buff_size="20MB")
-        self.tagid_sub = rospy.Subscriber("/" + self.veh + "/camera_node/image/compressed",
+        self.tagid_sub = rospy.Subscriber("~tagid",
                                     Int32,
-                                    self.cb_,
+                                    self.cb_tagid_detect,
                                     queue_size=1)
         
         self.vel_pub = rospy.Publisher("/" + self.veh + "/car_cmd_switch_node/cmd",
@@ -63,7 +63,8 @@ class LaneFollowNode(DTROS):
             162: 'Straight',
             133: 'Right',
             169: 'Left',
-            153: 'Straight'
+            153: 'Straight',
+            None: 'Straight'
         }
         self.action_num = 0
         self.tagid = None
@@ -212,9 +213,12 @@ class LaneFollowNode(DTROS):
             rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop))
             self.pub.publish(rect_img_msg)
     
-    def cd_tagid_detect (self, msg):
+    def cb_tagid_detect (self, msg):
         
-        self.tagid_sub = msg
+        self.loginfo(msg.data)
+        if msg.data > 0:
+            self.loginfo("Updated")
+            self.tagid_sub = msg.data
 
     def drive(self):
 
@@ -252,7 +256,8 @@ class LaneFollowNode(DTROS):
                 rospy.sleep(2)
                 self.stop_detection = True
                 self.loginfo("Timer set")
-                self.timer = rospy.Timer(rospy.Duration(8), self.cb_timer, oneshot= True)
+                if self.timer != None:
+                    self.timer = rospy.Timer(rospy.Duration(4), self.cb_timer, oneshot= True)
                 self.intersection_action()
 
                 # self.stop_times_up = True
@@ -265,7 +270,8 @@ class LaneFollowNode(DTROS):
 
     def cb_timer(self, te):
         self.loginfo("ticking")
-        self.stop_detection=False
+        self.stop_detection = False
+        self.timer = None
 
     def hook(self):
         print("SHUTTING DOWN")
