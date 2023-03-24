@@ -5,7 +5,7 @@ from sensor_msgs.msg import CompressedImage
 import numpy as np
 import cv2
 from cv_bridge import CvBridge
-from std_msgs.msg import String, Int8, Bool
+from std_msgs.msg import String, Int8, Bool, Int32
 # nn
 import torch
 from torch import nn
@@ -45,7 +45,7 @@ class InferenceNode(DTROS):
 
         # subscriber
         self.sub_roi = rospy.Subscriber('~cam_roi', CompressedImage, self.cb_img)  # image topic
-        self.sub_tagid = rospy.Subscriber('~tagid', Int8, self.cb_tagid)  # tagid
+        self.sub_tagid = rospy.Subscriber('~tagid', Int32, self.cb_tagid)  # tagid
 
         # publisher
         self.pub_digit = rospy.Publisher(
