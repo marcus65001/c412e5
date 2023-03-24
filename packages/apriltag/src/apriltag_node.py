@@ -177,7 +177,7 @@ class TagDetectorNode(DTROS):
             if (tdist:=np.linalg.norm(r.pose_t))<dist:
                 dist=tdist
                 rcand=r
-        print(rcand)
+        # print(rcand)
         if rcand:
             if dist > self.tag_det_dist:
                 self.log("tag {} too far ({}), ignored".format(rcand.tag_id, dist))
