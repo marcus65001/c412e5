@@ -79,7 +79,7 @@ class InferenceNode(DTROS):
             169: (0.574, 1.755),
             162: (1.253, 1.253)
         }
-        self._det = np.array([False for i in range(10)])
+        self._det = np.array([False]*10)
 
         # nn
         self._model = ResNetMNIST.load_from_checkpoint("/data/resnet18_mnist.pt")
