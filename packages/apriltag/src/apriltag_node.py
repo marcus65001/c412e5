@@ -11,7 +11,7 @@ from cv_bridge import CvBridge
 import yaml
 from dt_apriltags import Detector
 from duckietown_msgs.srv import ChangePattern, ChangePatternResponse
-from std_msgs.msg import String
+from std_msgs.msg import String, Int8, Bool
 from tf import transformations as tr
 from tf2_ros import TransformBroadcaster, Buffer, TransformListener
 
@@ -27,6 +27,7 @@ class TagDetectorNode(DTROS):
         # subscriber
         self.sub_comp_img = rospy.Subscriber('~cam', CompressedImage, self.cb_img)  # camera image topic
         self.sub_cam_info = rospy.Subscriber('~cam_info', CameraInfo, self.cb_cam_info)  # camera info topic
+        self.sub_shutdown = rospy.Subscriber('~shutdown', Bool, self.cb_shutdown)  # shutdown topic
 
         # publisher
         self.pub = rospy.Publisher(
@@ -35,6 +36,10 @@ class TagDetectorNode(DTROS):
             queue_size=1,
             dt_topic_type=TopicType.VISUALIZATION,
             dt_help="The stream of JPEG compressed images from the modified camera feed",
+        )
+        self.pub_at_id=rospy.Publisher(
+            "~tagid",
+            Int8
         )
 
         # services
@@ -103,6 +108,10 @@ class TagDetectorNode(DTROS):
             # init tag detector parameters
             camera_matrix=np.array(self.cam_info.K).reshape((3,3))
             self._at_detector_cam_para=(camera_matrix[0, 0], camera_matrix[1, 1], camera_matrix[0, 2], camera_matrix[1, 2])
+
+    def cb_shutdown(self, msg):
+        if msg.data==True:
+            rospy.signal_shutdown("finish")
 
     def undistort(self, u_img):
         h, w = u_img.shape[:2]
@@ -282,9 +291,16 @@ class TagDetectorNode(DTROS):
                 g_image = cv2.cvtColor(ud_image, cv2.COLOR_BGR2GRAY)
                 # tag detection
                 td_image = self.tag_detect(g_image)
+                # tag id message
+                tagid_msg = Int8()
                 # crop roi
                 if self.tag_det is not None:
+                    tagid_msg.data = self.tag_det.tag_id
                     self.number_roi=self.number_roi_detect(ud_image)
+                else:
+                    tagid_msg.data=-1
+                self.pub_at_id.publish(tagid_msg)
+
                 # publish
                 if self.number_roi is not None:
                     self.log("image pub")
