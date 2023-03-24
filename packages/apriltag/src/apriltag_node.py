@@ -11,7 +11,7 @@ from cv_bridge import CvBridge
 import yaml
 from dt_apriltags import Detector
 from duckietown_msgs.srv import ChangePattern, ChangePatternResponse
-from std_msgs.msg import String, Int8, Bool
+from std_msgs.msg import String, Int32, Bool
 from tf import transformations as tr
 from tf2_ros import TransformBroadcaster, Buffer, TransformListener
 
@@ -23,29 +23,6 @@ class TagDetectorNode(DTROS):
         super(TagDetectorNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
 
         self.veh = rospy.get_param("~veh")
-
-        # subscriber
-        self.sub_comp_img = rospy.Subscriber('~cam', CompressedImage, self.cb_img)  # camera image topic
-        self.sub_cam_info = rospy.Subscriber('~cam_info', CameraInfo, self.cb_cam_info)  # camera info topic
-        self.sub_shutdown = rospy.Subscriber('~shutdown', Bool, self.cb_shutdown)  # shutdown topic
-
-        # publisher
-        self.pub = rospy.Publisher(
-            "~image/compressed",
-            CompressedImage,
-            queue_size=1,
-            dt_topic_type=TopicType.VISUALIZATION,
-            dt_help="The stream of JPEG compressed images from the modified camera feed",
-        )
-        self.pub_at_id = rospy.Publisher(
-            "~tagid",
-            Int8
-        )
-
-        # services
-        # self.srvp_led_emitter = rospy.ServiceProxy(
-        #     "~set_pattern", ChangePattern
-        # )
 
         # parameters and internal objects
         self.image = None
@@ -97,6 +74,31 @@ class TagDetectorNode(DTROS):
         self.tag_det_dist = 1.4
         self.number_roi = None
 
+        # subscriber
+        self.sub_comp_img = rospy.Subscriber('~cam', CompressedImage, self.cb_img)  # camera image topic
+        self.sub_cam_info = rospy.Subscriber('~cam_info', CameraInfo, self.cb_cam_info)  # camera info topic
+        self.sub_shutdown = rospy.Subscriber('~shutdown', Bool, self.cb_shutdown)  # shutdown topic
+
+        # publisher
+        self.pub = rospy.Publisher(
+            "~image/compressed",
+            CompressedImage,
+            queue_size=1,
+            dt_topic_type=TopicType.VISUALIZATION,
+            dt_help="The stream of JPEG compressed images from the modified camera feed",
+        )
+
+        self.pub_at_id = rospy.Publisher(
+            "~tagid",
+            Int32,
+            queue_size=1
+        )
+
+        # services
+        # self.srvp_led_emitter = rospy.ServiceProxy(
+        #     "~set_pattern", ChangePattern
+        # )
+
     def read_image(self, msg):
         try:
             img = self._bridge.compressed_imgmsg_to_cv2(msg)
@@ -123,6 +125,7 @@ class TagDetectorNode(DTROS):
 
     def cb_shutdown(self, msg):
         if msg.data == True:
+            self.loginfo("shutdown signal received")
             rospy.signal_shutdown("finish")
 
     def undistort(self, u_img):
@@ -302,7 +305,7 @@ class TagDetectorNode(DTROS):
                 # tag detection
                 td_image = self.tag_detect(g_image)
                 # tag id message
-                tagid_msg = Int8()
+                tagid_msg = Int32()
                 # crop roi
                 if self.tag_det is not None:
                     tagid_msg.data = self.tag_det.tag_id
