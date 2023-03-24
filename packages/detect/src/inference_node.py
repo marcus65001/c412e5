@@ -45,6 +45,7 @@ class InferenceNode(DTROS):
 
         # subscriber
         self.sub_roi = rospy.Subscriber('~cam_roi', CompressedImage, self.cb_img)  # image topic
+        self.sub_tagid = rospy.Subscriber('~tagid', Int8, self.cb_tagid)  # tagid
 
         # publisher
         self.pub_digit = rospy.Publisher(
@@ -61,6 +62,18 @@ class InferenceNode(DTROS):
         # parameters and internal objects
         self.image = None
         self._bridge = CvBridge()
+        self._tag_loc = {
+            200: (0.17, 0.17),
+            201: (1.65, 0.17),
+            94: (1.65, 2.84),
+            93: (0.17, 2.84),
+            153: (1.75, 1.252),
+            133: (1.253, 1.755),
+            58: (0.574, 1.259),
+            62: (0.075, 1.755),
+            169: (0.574, 1.755),
+            162: (1.253, 1.253)
+        }
 
         # nn
         self._model = ResNetMNIST.load_from_checkpoint("/data/resnet18_mnist.pt")
@@ -87,6 +100,10 @@ class InferenceNode(DTROS):
         if self._bridge:
             t_img=self.read_image(msg)
             self.image = self._transforms(PIL.Image.fromarray(t_img))
+
+    def cb_tagid(self, msg):
+        if msg.data:
+            self.loginfo(self._tag_loc.get(msg.data,"None"))
 
     def get_prediction(self, x: pl.LightningModule):
         batch=x.unsqueeze(0)
