@@ -5,7 +5,7 @@ from sensor_msgs.msg import CompressedImage
 import numpy as np
 import cv2
 from cv_bridge import CvBridge
-from std_msgs.msg import String, Int8
+from std_msgs.msg import String, Int8, Bool
 # nn
 import torch
 from torch import nn
@@ -53,6 +53,11 @@ class InferenceNode(DTROS):
             Int8,
             queue_size=1,
         )
+        self.pub_shutdown = rospy.Publisher(
+            "~shutdown",
+            Bool,
+            queue_size=1,
+        )
 
         # services
         # self.srvp_led_emitter = rospy.ServiceProxy(
@@ -74,6 +79,7 @@ class InferenceNode(DTROS):
             169: (0.574, 1.755),
             162: (1.253, 1.253)
         }
+        self._det = np.array([False for i in range(10)])
 
         # nn
         self._model = ResNetMNIST.load_from_checkpoint("/data/resnet18_mnist.pt")
@@ -122,6 +128,13 @@ class InferenceNode(DTROS):
         msg.data=-1
         if prob[pred]>0.5:
             msg.data = pred
+            self._det[pred] = True
+            if self._det.all():
+                for i in range(10):
+                    msg_shut=Bool()
+                    msg_shut.data=True
+                    self.pub_shutdown.publish(msg_shut)
+                rospy.signal_shutdown("finish")
         self.pub_digit.publish(msg)
         return
 
