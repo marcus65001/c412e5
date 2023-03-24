@@ -16,9 +16,14 @@ from duckietown_msgs.srv import ChangePattern, ChangePatternResponse
 from std_msgs.msg import String, Int32
 
 ROAD_MASK = [(20, 60, 0), (50, 255, 255)]
-STOP_LINE_MASK = [(0, 130, 178), (179, 255, 255)]
+STOP_LINE_MASK = [(0, 70, 50), (10, 255, 255)]
+STOP_LINE_MASK2 = [(170, 70, 50), (180, 255, 255)]
 NUMBER_MASK = [(60, 122, 102), (134, 253, 162)]
-DEBUG = False
+LEFT_MASK = np.zeros((480,640), dtype=np.uint8)
+LEFT_MASK[ :, :-540] = 1
+RIGHT_MASK = np.zeros((480,640), dtype=np.uint8)
+RIGHT_MASK[ :, 100:] = 1
+DEBUG = True
 ENGLISH = False
 
 class LaneFollowNode(DTROS):
@@ -28,24 +33,7 @@ class LaneFollowNode(DTROS):
         self.node_name = node_name
         self.veh = rospy.get_param("~veh")
 
-        # Publishers & Subscribers
-        self.pub = rospy.Publisher("/" + self.veh + "/output/image/mask/compressed",
-                                   CompressedImage,
-                                   queue_size=1)
-        self.sub = rospy.Subscriber("/" + self.veh + "/camera_node/image/compressed",
-                                    CompressedImage,
-                                    self.callback,
-                                    queue_size=1,
-                                    buff_size="20MB")
-        self.tagid_sub = rospy.Subscriber("/" + self.veh + "/camera_node/image/compressed",
-                                    Int32,
-                                    self.cb_,
-                                    queue_size=1)
-        
-        self.vel_pub = rospy.Publisher("/" + self.veh + "/car_cmd_switch_node/cmd",
-                                       Twist2DStamped,
-                                       queue_size=1)
-        
+
 
         self.jpeg = TurboJPEG()
 
@@ -63,10 +51,20 @@ class LaneFollowNode(DTROS):
             162: 'Straight',
             133: 'Right',
             169: 'Left',
-            153: 'Straight'
+            153: 'Straight',
+            None: 'Straight'
         }
-        self.action_num = 0
+        self.tag_to_mask = {
+            62: RIGHT_MASK,
+            58: LEFT_MASK,
+            162: None,
+            133: LEFT_MASK,
+            169: RIGHT_MASK,
+            153: None,
+            None: None
+        }
         self.tagid = None
+        self.mask=LEFT_MASK
 
         # PID Variables
         self.proportional = None
@@ -100,6 +98,24 @@ class LaneFollowNode(DTROS):
         # self.angle_of_rotation = None
         # self.x = None
 
+        # Publishers & Subscribers
+        self.pub = rospy.Publisher("/" + self.veh + "/output/image/mask/compressed",
+                                   CompressedImage,
+                                   queue_size=1)
+        self.sub = rospy.Subscriber("/" + self.veh + "/camera_node/image/compressed",
+                                    CompressedImage,
+                                    self.callback,
+                                    queue_size=1,
+                                    buff_size="20MB")
+        self.tagid_sub = rospy.Subscriber("~tagid",
+                                          Int32,
+                                          self.cb_tagid_detect,
+                                          queue_size=1)
+
+        self.vel_pub = rospy.Publisher("/" + self.veh + "/car_cmd_switch_node/cmd",
+                                       Twist2DStamped,
+                                       queue_size=1)
+
         # Shutdown hook
         rospy.on_shutdown(self.hook)
 
@@ -128,27 +144,24 @@ class LaneFollowNode(DTROS):
         return (mid_x, mid_y)
     
     
-    def intersection_action(self):
-
-        if self.tag_to_action[self.tagid] == 'Left':
-            self.loginfo("Turning Left")
-            self.twist.v = 0.3
-            self.twist.omega = 0.5
-        elif self.tag_to_action[self.tagid] == 'Right':
-            self.loginfo("Turning Right")
-            self.twist.v = 0.3
-            self.twist.omega = - 0.5
-        else:
-            self.twist.v = 0.4
-            self.twist.omega = 0.0
+    # def intersection_action(self):
+    #
+    #     if self.tag_to_action[self.tagid] == 'Left':
+    #         self.loginfo("Turning Left")
+    #         self.twist.v = 0.3
+    #         self.twist.omega = 0.5
+    #     elif self.tag_to_action[self.tagid] == 'Right':
+    #         self.loginfo("Turning Right")
+    #         self.twist.v = 0.3
+    #         self.twist.omega = - 0.5
+    #     else:
+    #         self.twist.v = 0.4
+    #         self.twist.omega = 0.0
         
     
     def callback(self, msg):
-
         img = self.jpeg.decode(msg.data)
-        m_mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-        m_mask[ :, :-240] = 1
-        img = cv2.bitwise_and(img, img, mask=m_mask)
+        img = cv2.bitwise_and(img, img, mask=self.mask)
         crop = img[300:-1, :, :]
         crop_width = crop.shape[1]
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
@@ -180,20 +193,26 @@ class LaneFollowNode(DTROS):
         else:
             self.proportional = None
 
-        if not self.stop_detection:
+        if not self.stop_detection and not self.STOP:
             # Search for stop line
             img2 = self.jpeg.decode(msg.data)
-            crop2 = img2[320:480,300:640,:]
+            crop2 = img2[400:,:,:]
 
             cv2.line (crop2, (320, 240), (0,240), (255,0,0), 1)
 
             hsv2 = cv2.cvtColor(crop2, cv2.COLOR_BGR2HSV)
-            mask2 = cv2.inRange(hsv2, STOP_LINE_MASK[0], STOP_LINE_MASK[1])
+            maskl = cv2.inRange(hsv2, STOP_LINE_MASK[0], STOP_LINE_MASK[1])
+            maskh=cv2.inRange(hsv2, STOP_LINE_MASK2[0], STOP_LINE_MASK2[1])
+            mask2=maskh+maskl
             contours, hierarchy = cv2.findContours(mask2,
                                                 cv2.RETR_EXTERNAL,
                                                 cv2.CHAIN_APPROX_SIMPLE)
+            if DEBUG:
+                rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop2))
+                self.pub.publish(rect_img_msg)
             if len(contours) != 0: 
                 max_contour = max(contours, key=cv2.contourArea)
+                """
                 # Generates the size and the cordinantes of the bounding box and draw
                 x, y, w, h = cv2.boundingRect(max_contour)
                 cv2.rectangle(crop2,(x,y), (x + w, y + h), (0, 255, 0), 1)
@@ -203,20 +222,55 @@ class LaneFollowNode(DTROS):
                 cv2.line (crop2, self.midpoint(x,y,w,h), (self.midpoint(x,y,w,h)[0], 240), (255,0,0), 1)
                 self.proportional_stop = pixel_distance
                 self.STOP = True
-            else: 
+                """
+                self.loginfo("stop")
+                self.STOP=True
+                timer=rospy.Timer(rospy.Duration(3.),self.cb_stop,oneshot=True)
+            """
+            else:
                 self.proportional_stop = 0.0
                 self.STOP = False
+                """
 
 
-        if DEBUG:
-            rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop))
-            self.pub.publish(rect_img_msg)
+
+    def cb_stop(self,t):
+        self.loginfo("stop timer started")
+        self.STOP=False
+        self.stop_detection=True
+        tmr=rospy.Timer(rospy.Duration(4), self.cb_timer, oneshot=True)
+
     
-    def cd_tagid_detect (self, msg):
-        
-        self.tagid_sub = msg
+    def cb_tagid_detect (self, msg):
+        # self.loginfo(msg.data)
+        if msg.data > 0:
+            self.loginfo("Updated")
+            self.tagid = msg.data
+            self.mask=self.tag_to_mask[self.tagid]
 
     def drive(self):
+        if self.STOP:
+            self.twist.omega=0
+            self.twist.v=0
+        else:
+            if self.proportional is None:
+                self.twist.omega = 0
+            else:
+                # P Term
+                P = - self.proportional * self.P
+
+                # D Term
+                d_error = (self.proportional - self.last_error) / (rospy.get_time() - self.last_time)
+                self.last_error = self.proportional
+                self.last_time = rospy.get_time()
+                D = d_error * self.D
+
+                self.twist.v = self.velocity
+                self.twist.omega = P + D
+        # self.loginfo(self.twist)
+        self.vel_pub.publish(self.twist)
+    """
+    def drive2(self):
 
         #Start driving when I don't detect a stopline or when I finsihed being stopped at one
         if not self.STOP:
@@ -252,7 +306,8 @@ class LaneFollowNode(DTROS):
                 rospy.sleep(2)
                 self.stop_detection = True
                 self.loginfo("Timer set")
-                self.timer = rospy.Timer(rospy.Duration(8), self.cb_timer, oneshot= True)
+                if self.timer != None:
+                    self.timer = rospy.Timer(rospy.Duration(4), self.cb_timer, oneshot= True)
                 self.intersection_action()
 
                 # self.stop_times_up = True
@@ -262,10 +317,12 @@ class LaneFollowNode(DTROS):
             #   self.loginfo([self.proportional, P, D, self.twist.omega, self.twist.v])
 
         self.vel_pub.publish(self.twist)
+    """
 
     def cb_timer(self, te):
-        self.loginfo("ticking")
-        self.stop_detection=False
+        self.loginfo("stop det timer")
+        self.stop_detection = False
+        self.timer = None
 
     def hook(self):
         print("SHUTTING DOWN")
