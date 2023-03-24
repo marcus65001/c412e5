@@ -37,7 +37,7 @@ class TagDetectorNode(DTROS):
             dt_topic_type=TopicType.VISUALIZATION,
             dt_help="The stream of JPEG compressed images from the modified camera feed",
         )
-        self.pub_at_id=rospy.Publisher(
+        self.pub_at_id = rospy.Publisher(
             "~tagid",
             Int8
         )
@@ -52,13 +52,13 @@ class TagDetectorNode(DTROS):
         self.cam_info = None
         self._bridge = CvBridge()
         self._at_detector = Detector(families='tag36h11',
-                       nthreads=1,
-                       quad_decimate=1.0,
-                       quad_sigma=0.0,
-                       refine_edges=1,
-                       decode_sharpening=0.25,
-                       debug=0)
-        self._at_detector_cam_para=None
+                                     nthreads=1,
+                                     quad_decimate=1.0,
+                                     quad_sigma=0.0,
+                                     refine_edges=1,
+                                     decode_sharpening=0.25,
+                                     debug=0)
+        self._at_detector_cam_para = None
         self.num_roi_l = np.array([80, 63, 86])
         self.num_roi_h = np.array([130, 255, 255])
 
@@ -66,14 +66,26 @@ class TagDetectorNode(DTROS):
         self.ci_cam_dist = None
 
         # color mappings
-        self.tag_cat_id={
-            "ua":[93,94,200,201],
-            "t":[58,62,133,153],
-            "stop":[162,169],
+        self.tag_cat_id = {
+            "ua": [93, 94, 200, 201],
+            "t": [58, 62, 133, 153],
+            "stop": [162, 169],
             # "other":[227]
         }
-        self.tag_all_id=np.concatenate([self.tag_cat_id[i] for i in self.tag_cat_id])
-        self.tag_color={
+        self.tag_loc = {
+            200: (0.17, 0.17),
+            201: (1.65, 0.17),
+            94: (1.65, 2.84),
+            93: (0.17, 2.84),
+            153: (1.75, 1.252),
+            133: (1.253, 1.755),
+            58: (0.574, 1.259),
+            62: (0.075, 1.755),
+            169: (0.574, 1.755),
+            162: (1.253, 1.253)
+        }
+        self.tag_all_id = np.concatenate([self.tag_cat_id[i] for i in self.tag_cat_id])
+        self.tag_color = {
             None: "WHITE",
             "ua": "GREEN",
             "stop": "RED",
@@ -81,13 +93,13 @@ class TagDetectorNode(DTROS):
             "other": "LIGHT_OFF"
         }
         self.led_color = "white"
-        self.tag_det=None
-        self.tag_det_dist=1.4
-        self.number_roi=None
+        self.tag_det = None
+        self.tag_det_dist = 1.4
+        self.number_roi = None
 
     def read_image(self, msg):
         try:
-            img=self._bridge.compressed_imgmsg_to_cv2(msg)
+            img = self._bridge.compressed_imgmsg_to_cv2(msg)
             if (img is not None) and (self.image is None):
                 self.log("got first msg")
             return img
@@ -95,22 +107,22 @@ class TagDetectorNode(DTROS):
             self.log(e)
             return np.array([])
 
-
     def cb_cam_info(self, msg):
         if not self.cam_info:
             self.cam_info = msg
             self.log('read camera info')
             self.log(self.cam_info)
             # init camera info matrices
-            self.ci_cam_matrix=np.array(self.cam_info.K).reshape((3,3))
-            self.ci_cam_dist=np.array(self.cam_info.D).reshape((1,5))
+            self.ci_cam_matrix = np.array(self.cam_info.K).reshape((3, 3))
+            self.ci_cam_dist = np.array(self.cam_info.D).reshape((1, 5))
 
             # init tag detector parameters
-            camera_matrix=np.array(self.cam_info.K).reshape((3,3))
-            self._at_detector_cam_para=(camera_matrix[0, 0], camera_matrix[1, 1], camera_matrix[0, 2], camera_matrix[1, 2])
+            camera_matrix = np.array(self.cam_info.K).reshape((3, 3))
+            self._at_detector_cam_para = (
+                camera_matrix[0, 0], camera_matrix[1, 1], camera_matrix[0, 2], camera_matrix[1, 2])
 
     def cb_shutdown(self, msg):
-        if msg.data==True:
+        if msg.data == True:
             rospy.signal_shutdown("finish")
 
     def undistort(self, u_img):
@@ -125,8 +137,8 @@ class TagDetectorNode(DTROS):
         return dst
 
     def tag_id_to_color(self, id):
-        cat=None
-        for k,v in self.tag_cat_id.items():
+        cat = None
+        for k, v in self.tag_cat_id.items():
             if id in v:
                 cat = k
         return self.tag_color[cat] if cat else self.tag_color['other']
@@ -157,13 +169,12 @@ class TagDetectorNode(DTROS):
     #     except Exception as e:
     #         self.log("Set LED error: {}".format(e))
 
-
     def tag_detect(self, img):
         tags = self._at_detector.detect(img, True, self._at_detector_cam_para, 0.051)
         # print(tags)
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        dist=np.inf
-        rcand=None
+        dist = np.inf
+        rcand = None
         for r in tags:
             (ptA, ptB, ptC, ptD) = r.corners
             ptB = (int(ptB[0]), int(ptB[1]))
@@ -172,7 +183,7 @@ class TagDetectorNode(DTROS):
             ptA = (int(ptA[0]), int(ptA[1]))
 
             # draw the bounding box
-            color=self.tag_id_to_color(r.tag_id)
+            color = self.tag_id_to_color(r.tag_id)
             self.draw_segment(img, ptA, ptB, color)
             self.draw_segment(img, ptB, ptC, color)
             self.draw_segment(img, ptC, ptD, color)
@@ -183,26 +194,25 @@ class TagDetectorNode(DTROS):
             cv2.circle(img, (cX, cY), 5, (0, 0, 255), -1)
 
             # dist
-            if (tdist:=np.linalg.norm(r.pose_t))<dist:
-                dist=tdist
-                rcand=r
-        print(rcand)
+            if (tdist := np.linalg.norm(r.pose_t)) < dist:
+                dist = tdist
+                rcand = r
+        self.loginfo("tag: {}".format(rcand))
         if rcand:
             if dist > self.tag_det_dist:
                 self.log("tag {} too far ({}), ignored".format(rcand.tag_id, dist))
-                rcand=None
-        self.tag_det=rcand
+                rcand = None
+        self.tag_det = rcand
 
         # led
         # self.set_led(self.tag_id_to_color(rcand.tag_id) if rcand else "WHITE")
         return img
 
-
     def cb_tag_pose_update(self, timer):
         if self.tag_det is None:
             return
         rcand = self.tag_det
-        self.tag_det=None
+        self.tag_det = None
         t = np.zeros((4, 4))
         t[:3, :3] = np.array(rcand.pose_R)
         t[3, 3] = 1.
@@ -252,7 +262,7 @@ class TagDetectorNode(DTROS):
         if self._bridge and (self.ci_cam_matrix is not None):
             # rectify
             # uimg=cv2.UMat(self.read_image(msg))
-            self.image=self.read_image(msg)
+            self.image = self.read_image(msg)
 
     def number_roi_detect(self, img):
         # uimg = cv2.UMat(img)
@@ -272,10 +282,10 @@ class TagDetectorNode(DTROS):
                 x, y, w, h = cv2.boundingRect(max_contour)
                 # cv2.rectangle(img_h, (x + 10, y + 10), (x + w - 10, y + h - 10), (0, 255, 0), 2)
                 # crop = cv2.UMat(img_h, [y + 10, y + h - 10], [x + 10, x + w - 10])
-                crop=img_h[max(0,y-2):min(H,y + h+2), max(0,x - 2): min(W,x + w +2)]
+                crop = img_h[max(0, y - 2):min(H, y + h + 2), max(0, x - 2): min(W, x + w + 2)]
                 crop = cv2.cvtColor(crop, cv2.COLOR_HSV2BGR)
-                if (w * h < 30*30) or (not (0.5 < w / h < 2.0)):
-                    self.log("too small/ratio {} {}".format(w,h))
+                if (w * h < 30 * 30) or (not (0.5 < w / h < 2.0)):
+                    self.log("too small/ratio {} {}".format(w, h))
                     return crop
             except Exception as e:
                 self.log(e)
@@ -296,18 +306,18 @@ class TagDetectorNode(DTROS):
                 # crop roi
                 if self.tag_det is not None:
                     tagid_msg.data = self.tag_det.tag_id
-                    self.number_roi=self.number_roi_detect(ud_image)
+                    self.number_roi = self.number_roi_detect(ud_image)
                 else:
-                    tagid_msg.data=-1
+                    tagid_msg.data = -1
                 self.pub_at_id.publish(tagid_msg)
 
                 # publish
                 if self.number_roi is not None:
                     self.log("image pub")
-                    mat=self.number_roi
+                    mat = self.number_roi
                     image_msg = self._bridge.cv2_to_compressed_imgmsg(mat, dst_format="jpeg")
                     self.pub.publish(image_msg)
-                    self.number_roi=None
+                    self.number_roi = None
                 rate.sleep()
 
 
