@@ -13,6 +13,7 @@ import pytorch_lightning as pl
 from torchvision import transforms
 from torchvision.models import resnet18
 import PIL
+from subprocess import call
 
 
 class ResNetMNIST(pl.LightningModule):
@@ -131,10 +132,9 @@ class InferenceNode(DTROS):
             msg.data = pred
             self._det[pred] = True
             if self._det.all():
-                for i in range(100):
-                    msg_shut=Bool()
-                    msg_shut.data=True
-                    self.pub_shutdown.publish(msg_shut)
+                call(["rosnode", "kill", "/{}/lane_follow_node".format(self.veh)])
+                call(["rosnode", "kill", "/{}/apriltag_node".format(self.veh)])
+                rospy.sleep(rospy.Duration(2.))
                 rospy.signal_shutdown("finish")
             self.loginfo("Detected: {}".format([i for i in range(len(self._det)) if self._det[i]]))
         self.pub_digit.publish(msg)
