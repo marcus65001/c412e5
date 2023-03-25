@@ -120,6 +120,7 @@ class InferenceNode(DTROS):
         return predicted_class.to('cpu').numpy()[0], probabilities.to('cpu').numpy()[0]
 
     def inference(self):
+        self.loginfo("inference request")
         img = self.image
         self.image = None
         pred,prob=self.get_prediction(img)
@@ -141,6 +142,7 @@ class InferenceNode(DTROS):
 
     def run(self):
         rate = rospy.Rate(4)
+        self.loginfo("start spinning")
         while not rospy.is_shutdown():
             if self.image is not None:
                 self.inference()
