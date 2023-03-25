@@ -88,6 +88,14 @@ class TagDetectorNode(DTROS):
             dt_help="The stream of JPEG compressed images from the modified camera feed",
         )
 
+        self.pub_cam = rospy.Publisher(
+            "~image2/compressed",
+            CompressedImage,
+            queue_size=1,
+            dt_topic_type=TopicType.VISUALIZATION,
+            dt_help="The stream of JPEG compressed images from the modified camera feed",
+        )
+
         self.pub_at_id = rospy.Publisher(
             "~tagid",
             Int32,
@@ -281,7 +289,7 @@ class TagDetectorNode(DTROS):
                 max_contour = max(contours, key=cv2.contourArea)
                 if cv2.contourArea(max_contour) > 500 * 500:
                     self.log("too large")
-                    return None
+                    return None, None
                 x, y, w, h = cv2.boundingRect(max_contour)
                 # cv2.rectangle(img_h, (x + 10, y + 10), (x + w - 10, y + h - 10), (0, 255, 0), 2)
                 # crop = cv2.UMat(img_h, [y + 10, y + h - 10], [x + 10, x + w - 10])
@@ -289,10 +297,10 @@ class TagDetectorNode(DTROS):
                 crop = cv2.cvtColor(crop, cv2.COLOR_HSV2BGR)
                 if (w * h < 30 * 30) or (not (0.5 < w / h < 2.0)):
                     self.log("too small/ratio {} {}".format(w, h))
-                    return crop
+                    return None, None
             except Exception as e:
                 self.log(e)
-        return crop
+        return crop, tuple([x,y,w,h])
 
     def run(self):
         rate = rospy.Rate(2)
@@ -309,7 +317,7 @@ class TagDetectorNode(DTROS):
                 # crop roi
                 if self.tag_det is not None:
                     tagid_msg.data = self.tag_det.tag_id
-                    self.number_roi = self.number_roi_detect(ud_image)
+                    self.number_roi, box = self.number_roi_detect(ud_image)
                 else:
                     tagid_msg.data = -1
                 self.pub_at_id.publish(tagid_msg)
@@ -321,6 +329,11 @@ class TagDetectorNode(DTROS):
                     image_msg = self._bridge.cv2_to_compressed_imgmsg(mat, dst_format="jpeg")
                     self.pub.publish(image_msg)
                     self.number_roi = None
+                    H, W = ud_image.shape[:2]
+                    x,y,w,h=box
+                    cv2.rectangle(ud_image, (x,y), (x+w,y+h), (0, 255, 0), 2)
+                image_msg = self._bridge.cv2_to_compressed_imgmsg(ud_image, dst_format="jpeg")
+                self.pub_cam.publish(image_msg)
                 rate.sleep()
 
 
