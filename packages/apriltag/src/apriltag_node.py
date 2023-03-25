@@ -71,7 +71,7 @@ class TagDetectorNode(DTROS):
         }
         self.led_color = "white"
         self.tag_det = None
-        self.tag_det_dist = 1.4
+        self.tag_det_dist = 1.0
         self.number_roi = None
 
         # subscriber

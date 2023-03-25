@@ -14,15 +14,18 @@ from duckietown_msgs.msg import AprilTagDetectionArray, AprilTagDetection
 from duckietown_msgs.msg import WheelsCmdStamped, Twist2DStamped
 from duckietown_msgs.srv import ChangePattern, ChangePatternResponse
 from std_msgs.msg import String, Int32
+from imutils import contours as im_contours
 
 ROAD_MASK = [(20, 60, 0), (50, 255, 255)]
-STOP_LINE_MASK = [(0, 70, 50), (10, 255, 255)]
-STOP_LINE_MASK2 = [(170, 70, 50), (180, 255, 255)]
+STOP_LINE_MASK = [(0, 65, 0), (10, 204, 255)]
+# STOP_LINE_MASK2 = [(170, 70, 50), (180, 255, 255)]
 NUMBER_MASK = [(60, 122, 102), (134, 253, 162)]
 LEFT_MASK = np.zeros((480,640), dtype=np.uint8)
-LEFT_MASK[ :, :-540] = 1
+LEFT_MASK[ :, :-280] = 1
 RIGHT_MASK = np.zeros((480,640), dtype=np.uint8)
-RIGHT_MASK[ :, 100:] = 1
+RIGHT_MASK[ :, 200:] = 1
+STRAIGHT_MASK = np.zeros((480,640), dtype=np.uint8)
+STRAIGHT_MASK[ :, 50:350] = 1
 DEBUG = True
 ENGLISH = False
 
@@ -47,37 +50,44 @@ class LaneFollowNode(DTROS):
         self.num_of_detections = 0
         self.tag_to_action = {
             62: 'Left',
-            58: 'Right',
-            162: 'Straight',
+            58: 'Straight',
+            162: 'Right',
             133: 'Right',
             169: 'Left',
             153: 'Straight',
             None: 'Straight'
         }
         self.tag_to_mask = {
-            62: RIGHT_MASK,
-            58: LEFT_MASK,
-            162: None,
-            133: LEFT_MASK,
-            169: RIGHT_MASK,
-            153: None,
-            None: None
+            62: LEFT_MASK,
+            58: RIGHT_MASK,
+            162: STRAIGHT_MASK,
+            133: RIGHT_MASK,
+            169: LEFT_MASK,
+            153: STRAIGHT_MASK,
+            None: STRAIGHT_MASK
+        }
+        self.action_to_mask={
+            "Straight":STRAIGHT_MASK,
+            "Left":LEFT_MASK,
+            "Right":RIGHT_MASK
         }
         self.tagid = None
-        self.mask=LEFT_MASK
+        # self.mask=STRAIGHT_MASK
+        self.action="Left"
 
         # PID Variables
         self.proportional = None
         self.proportional_stop = 0.0
         if ENGLISH:
-            self.offset = -220
+            self.offset = -200
         else:
-            self.offset = 220
-        self.velocity = 0.4
+            self.offset = 200
+        self.velocity = 0.3
         self.twist = Twist2DStamped(v=self.velocity, omega=0)
 
-        self.P = 0.049
-        self.D = -0.004
+        self.P = 0.041
+        # self.P = 0.038
+        self.D = -0.0025
         self.last_error = 0
         self.last_time = rospy.get_time()
 
@@ -161,57 +171,97 @@ class LaneFollowNode(DTROS):
     
     def callback(self, msg):
         img = self.jpeg.decode(msg.data)
-        img = cv2.bitwise_and(img, img, mask=self.mask)
-        crop = img[300:-1, :, :]
+        img_m = cv2.bitwise_and(img, img, mask=self.action_to_mask[self.action])
+        crop = img_m[200:-70, :, :]
         crop_width = crop.shape[1]
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, ROAD_MASK[0], ROAD_MASK[1])
         crop = cv2.bitwise_and(crop, crop, mask=mask)
+
         contours, hierarchy = cv2.findContours(mask,
                                                cv2.RETR_EXTERNAL,
                                                cv2.CHAIN_APPROX_NONE)
         # Search for lane in front
-        max_area = 20
-        max_idx = -1
-        for i in range(len(contours)):
-            area = cv2.contourArea(contours[i])
-            if area > max_area:
-                max_idx = i
-                max_area = area
-
-        if max_idx != -1:
-            M = cv2.moments(contours[max_idx])
+        # max_area = 20
+        # max_idx = -1
+        # for i in range(len(contours)):
+        #     area = cv2.contourArea(contours[i])
+        #     if area > max_area:
+        #         max_idx = i
+        #         max_area = area
+        #
+        # if max_idx != -1:
+        #     M = cv2.moments(contours[max_idx])
+        #     try:
+        #         cx = int(M['m10'] / M['m00'])
+        #         cy = int(M['m01'] / M['m00'])
+        #         self.proportional = cx - int(crop_width / 2) + self.offset
+        #         if DEBUG:
+        #             cv2.drawContours(crop, contours, max_idx, (0, 255, 0), 3)
+        #             cv2.circle(crop, (cx, cy), 7, (0, 0, 255), -1)
+        #     except:
+        #         pass
+        # else:
+        #     self.proportional = None
+        cand = None
+        H, W, _ = img.shape
+        area = 0
+        if len(contours):
+            s_con, _ = im_contours.sort_contours(contours, method=("right-to-left" if (self.action=="Right") else "left-to-right"))
+            for i in range(len(s_con)):
+                if cv2.contourArea(s_con[i]) < 20:
+                    continue
+                M = cv2.moments(s_con[i])
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                if DEBUG:
+                    cv2.drawContours(crop, contours, i, (0, 255, 255), 2)
+                    cv2.circle(crop, (cX, cY), 7, (0, 0, 255), -1)
+                if (self.action=="Left"):
+                    # if cX < W // 2:
+                    cand = s_con[i]
+                    break
+                if (self.action=="Straight") or (self.action=="Right"):
+                    if cv2.contourArea(s_con[i])>area:
+                        cand = s_con[i]
+                        area=cv2.contourArea(s_con[i])
+        if cand is not None:
+            x, y, w, h = cv2.boundingRect(cand)
+            M = cv2.moments(cand)
             try:
                 cx = int(M['m10'] / M['m00'])
                 cy = int(M['m01'] / M['m00'])
-                self.proportional = cx - int(crop_width / 2) + self.offset
+                self.proportional = cx - int(crop_width / 2) + (self.offset)
                 if DEBUG:
-                    cv2.drawContours(crop, contours, max_idx, (0, 255, 0), 3)
+                    cv2.drawContours(crop, [cand], 0, (0, 255, 0), 3)
                     cv2.circle(crop, (cx, cy), 7, (0, 0, 255), -1)
+                    # self.loginfo("p: {} cy: {}".format(self.proportional,cy))
             except:
                 pass
         else:
-            self.proportional = None
+            self.proportional=None
+
 
         if not self.stop_detection and not self.STOP:
             # Search for stop line
-            img2 = self.jpeg.decode(msg.data)
-            crop2 = img2[400:,:,:]
+            crop2 = img[400:,50:,:]
 
             cv2.line (crop2, (320, 240), (0,240), (255,0,0), 1)
 
             hsv2 = cv2.cvtColor(crop2, cv2.COLOR_BGR2HSV)
-            maskl = cv2.inRange(hsv2, STOP_LINE_MASK[0], STOP_LINE_MASK[1])
-            maskh=cv2.inRange(hsv2, STOP_LINE_MASK2[0], STOP_LINE_MASK2[1])
-            mask2=maskh+maskl
-            contours, hierarchy = cv2.findContours(mask2,
+            mask_stop = cv2.inRange(hsv2, STOP_LINE_MASK[0], STOP_LINE_MASK[1])
+            # mask_stop_h = cv2.inRange(hsv2, STOP_LINE_MASK2[0], STOP_LINE_MASK2[1])
+            # mask_stop=mask_stop_h+mask_stop_l
+            mask_img = cv2.bitwise_and(hsv2,hsv2 , mask=mask_stop)
+            contours, hierarchy = cv2.findContours(mask_stop,
                                                 cv2.RETR_EXTERNAL,
                                                 cv2.CHAIN_APPROX_SIMPLE)
             if DEBUG:
-                rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop2))
+                rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(mask_img))
                 self.pub.publish(rect_img_msg)
             if len(contours) != 0: 
                 max_contour = max(contours, key=cv2.contourArea)
+                self.loginfo(cv2.contourArea(max_contour))
                 """
                 # Generates the size and the cordinantes of the bounding box and draw
                 x, y, w, h = cv2.boundingRect(max_contour)
@@ -223,30 +273,35 @@ class LaneFollowNode(DTROS):
                 self.proportional_stop = pixel_distance
                 self.STOP = True
                 """
-                self.loginfo("stop")
-                self.STOP=True
-                timer=rospy.Timer(rospy.Duration(3.),self.cb_stop,oneshot=True)
+                if self.timer is None and cv2.contourArea(max_contour)>500:
+                    self.loginfo("stop")
+                    self.timer =rospy.Timer(rospy.Duration(.7), self.cb_stop_start, oneshot=True)
             """
             else:
                 self.proportional_stop = 0.0
                 self.STOP = False
                 """
 
-
+    def cb_stop_start(self,t):
+        self.STOP=True
+        timer = rospy.Timer(rospy.Duration(2.), self.cb_stop, oneshot=True)
+        self.timer=None
 
     def cb_stop(self,t):
-        self.loginfo("stop timer started")
+        self.loginfo("stop timer up")
         self.STOP=False
+        self.last_error=0
         self.stop_detection=True
-        tmr=rospy.Timer(rospy.Duration(4), self.cb_timer, oneshot=True)
+        self.action = self.tag_to_action.get(self.tagid, "Straight")
+        self.loginfo("tag {} action: {}".format(self.tagid,self.action))
+        tmr = rospy.Timer(rospy.Duration(4), self.cb_timer, oneshot=True)
 
     
     def cb_tagid_detect (self, msg):
         # self.loginfo(msg.data)
         if msg.data > 0:
-            self.loginfo("Updated")
             self.tagid = msg.data
-            self.mask=self.tag_to_mask[self.tagid]
+            self.loginfo("Tag: {}".format(self.tagid, self.action))
 
     def drive(self):
         if self.STOP:
@@ -269,6 +324,7 @@ class LaneFollowNode(DTROS):
                 self.twist.omega = P + D
         # self.loginfo(self.twist)
         self.vel_pub.publish(self.twist)
+
     """
     def drive2(self):
 
@@ -323,7 +379,8 @@ class LaneFollowNode(DTROS):
         self.loginfo("stop det timer")
         self.stop_detection = False
         self.timer = None
-
+        self.action="Straight"
+        self.loginfo("stop det timer: reset action")
     def hook(self):
         print("SHUTTING DOWN")
         self.twist.v = 0

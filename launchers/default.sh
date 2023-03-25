@@ -14,8 +14,8 @@ dt-launchfile-init
 
 # launching app
 # dt-exec roslaunch deadreckoning deadreckoning_node.launch veh:=csc22925
-dt-exec roslaunch apriltag apriltag_node.launch veh:=csc22925
-dt-exec roslaunch lane_follow lane_follow_node.launch veh:=csc22925
+dt-exec roslaunch apriltag apriltag_node.launch veh:=csc22909
+dt-exec roslaunch lane_follow lane_follow_node.launch veh:=csc22909
 
 
 
