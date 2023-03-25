@@ -17,9 +17,6 @@ dt-launchfile-init
 dt-exec roslaunch apriltag apriltag_node.launch veh:=csc22925
 dt-exec roslaunch lane_follow lane_follow_node.launch veh:=csc22925
 
-
-
-
 # ----------------------------------------------------------------------------
 # YOUR CODE ABOVE THIS LINE
 
