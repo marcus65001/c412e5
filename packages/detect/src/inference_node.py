@@ -101,7 +101,7 @@ class InferenceNode(DTROS):
             return np.array([])
 
     def cb_img(self, msg):
-        self.log("image callback")
+        # self.log("image callback")
         # image callback
         if self._bridge:
             t_img=self.read_image(msg)
@@ -120,22 +120,23 @@ class InferenceNode(DTROS):
         return predicted_class.to('cpu').numpy()[0], probabilities.to('cpu').numpy()[0]
 
     def inference(self):
-        self.loginfo("inference request")
+        # self.loginfo("inference request")
         img = self.image
         self.image = None
         pred,prob=self.get_prediction(img)
-        self.log("{} - {}".format(pred,prob))
+        # self.log("{} - {}".format(pred,prob))
         msg=Int8()
         msg.data=-1
         if prob[pred]>0.5:
             msg.data = pred
             self._det[pred] = True
             if self._det.all():
-                for i in range(10):
+                for i in range(100):
                     msg_shut=Bool()
                     msg_shut.data=True
                     self.pub_shutdown.publish(msg_shut)
                 rospy.signal_shutdown("finish")
+            self.loginfo("Detected: {}".format([i for i in range(len(self._det)) if self._det[i]]))
         self.pub_digit.publish(msg)
         return
 
