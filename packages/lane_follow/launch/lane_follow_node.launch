@@ -6,7 +6,7 @@
         <node name="$(arg node_name)" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" required="true">
             <param name="veh" value="$(arg veh)" />
             <remap from="~tagid" to="/$(arg veh)/apriltag_node/tagid"/>
-            <remap from="~shutdown" to="/remote/inference_node/shutdown">
+            <remap from="~shutdown" to="/remote/inference_node/shutdown"/>
         </node>
     </group>
 </launch>

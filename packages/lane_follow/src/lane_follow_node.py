@@ -37,7 +37,7 @@ class LaneFollowNode(DTROS):
 
         self.loginfo("timer called")
 
-        self.num_of_detections = 0
+        # Every apriltag in the dictionary is associated to one action
         self.tag_to_action = {
             62: 'Left',
             58: 'Straight',
@@ -47,7 +47,7 @@ class LaneFollowNode(DTROS):
             153: 'Straight',
             None: 'Straight'
         }
-        self.action_num = 0
+
         self.tagid = None
 
         # PID Variables
@@ -65,18 +65,15 @@ class LaneFollowNode(DTROS):
         self.last_error = 0
         self.last_time = rospy.get_time()
 
+        # PID varaibles for stopping
         self.P_2 = (4/1600)
         self.stop_ofs = 0.0
-        self.stop_times_up = False
         self.STOP = False
 
         # Image variables
         self.width = 640
         self.height = 480
         self.add_patch = True
-
-        self.start_detect_shutoff_time = None
-        self.current_detect_shutoff_time = None
 
         # Publishers & Subscribers
         self.sub = rospy.Subscriber("/" + self.veh + "/camera_node/image/compressed",
@@ -104,42 +101,18 @@ class LaneFollowNode(DTROS):
                                        queue_size=1)
 
         # Wait a little while before sending motor commands
-        rospy.Rate(0.20).sleep()
-
-        # self.point_positon = None
-        # self.angular_position = None
-        # self.angle_of_rotation = None
-        # self.x = None
-        
+        rospy.Rate(0.20).sleep()      
 
         # Shutdown hook
         rospy.on_shutdown(self.hook)
 
-    # def cb_odometry(self, msg):
-
-    #     self.point_positon = msg.pose.pose.position
-    #     self.angular_position = msg.pose.pose.orientation
-    #     self.loginfo(self.point_positon)
-    #     self.loginfo(self.angular_position)
-
-    #     # Setting the quaternarian x axis of rotation into euler
-    #     self.x = self.point_positon.x
-    #     sinr_cosp = 2 * (self.angular_position.w * self.angular_position.x + self.angular_position.y * self.angular_position.z)
-    #     cosr_cosp = 1 - 2 * (self.angular_position.x * self.angular_position.x + self.angular_position.y * self.angular_position.y)
-    #     self.angle_of_rotation = math.atan2(sinr_cosp, cosr_cosp)
-
-    #Calculates the midpoint of the contoured object
-
-    # def perform_action (self):
-
-    #     if self.detected_apriltag[self.num_of_detections] in self.avail_tags["inter_tags"]:
-          
+    # This detects the mid section of the bottom side of our stop line detection
     def midpoint (self, x, y, w, h):
         mid_x = int(x + (((x+w) - x)/2))
         mid_y = int(y + (((y+h) - y)))
         return (mid_x, mid_y)
     
-    
+    # This executes an action based on the apritag that was detected before stopping
     def intersection_action(self):
 
         self.loginfo("TAG DETECTED: " + str(self.tagid))
@@ -150,13 +123,14 @@ class LaneFollowNode(DTROS):
         elif self.tag_to_action.get(self.tagid) == 'Right':
             self.loginfo("Turning Right")
             self.add_patch = False
-            self.twist.v = 0.35
-            self.twist.omega = - 0.7
+            self.twist.v = 0.4
+            self.twist.omega = - 0.5
         else:
             self.twist.omega = 0
             self.twist.v = self.velocity
             self.last_error = 0   
     
+     # Image call back for detecting both lane following and stop line
     def callback(self, msg):
 
         img = self.jpeg.decode(msg.data)
@@ -226,6 +200,7 @@ class LaneFollowNode(DTROS):
             rect_img_msg = CompressedImage(format="jpeg", data=self.jpeg.encode(crop))
             self.pub.publish(rect_img_msg)
     
+    # Receives a tag_id and selects only the ones that are in our dictionary
     def cb_tagid_detect (self, msg):
         
         if msg.data in self.tag_to_action:
@@ -237,6 +212,7 @@ class LaneFollowNode(DTROS):
         #Start driving when I don't detect a stopline or when I finsihed being stopped at one
         if not self.STOP:
 
+            #Executes an action until the lane is detected again
             if self.proportional is None:
                 # self.twist.omega = 0
                 # self.last_error = 0
@@ -253,42 +229,40 @@ class LaneFollowNode(DTROS):
 
                 self.twist.v = self.velocity
                 self.twist.omega = P + D
-                # if DEBUG:
-                #     self.loginfo([self.proportional, P, D, self.twist.omega, self.twist.v])
+
         else:
             # P Term
 
             P_2 = (self.proportional_stop - self.stop_ofs) * self.P_2
-            # print(P_2)
 
             # This makes sures the values outputted by P_2 stays within 0.0 and 0.4
             self.twist.v = np.clip(P_2, 0.0, 0.4)
             self.twist.omega = 0.0
 
-            # When stopped wait 1 second then start moving
+            # When stopped wait 2 second then start moving action
             if self.twist.v == 0.0:
                 rospy.sleep(2)
+                #Sets timer so that it can execute act
                 if self.timer is None:
                     self.stop_detection = True
                     self.loginfo("Timer set")
                     self.timer = rospy.Timer(rospy.Duration(5), self.cb_timer, oneshot= True)
-            # self.intersection_action()
-                # self.stop_times_up = True
             self.STOP = False
 
-        # if DEBUG:
-            # self.loginfo([self.proportional, P, D, self.twist.omega, self.twist.v])
-            # self.loginfo(self.twist)
-        # self.loginfo("STOP DETECTION STATUS: " + str(self.stop_detection))
-        # self.loginfo([self.twist.v, self.twist.omega])
+        if DEBUG:
+            self.loginfo("STOP DETECTION STATUS: " + str(self.stop_detection))
+            self.loginfo([self.twist.v, self.twist.omega])
+
         self.vel_pub.publish(self.twist)
 
+    # Timer callback to reverse our flags set
     def cb_timer(self, te):
         self.loginfo("Timer Up")
         self.stop_detection = False
         self.timer = None
         self.add_patch = True
 
+    # Shutdown flag based on the completion of all detections
     def cb_shutdown(self,msg):
         if msg.data == True:
             self.loginfo("shutdown signal recieved")
