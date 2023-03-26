@@ -19,7 +19,7 @@ Make sure to have a local installation of ROS.
 ```roslaunch detect inference_node.launch veh:=<BOT>```
 
 ## Node
-* Inference mode
+* Inference node
 
 ## License
 [Duckietown](https://www.duckietown.org/about/sw-license)
