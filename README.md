@@ -13,5 +13,8 @@ On the remote machine, refer to [inference node](https://github.com/marcus65001/
 * Apriltag mode
 * Lane following node
 
+## Other
+[Utility scripts](https://github.com/marcus65001/c412e5_utils)
+
 ## License
 [Duckietown](https://www.duckietown.org/about/sw-license)
