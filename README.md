@@ -11,9 +11,11 @@ Make sure to have a local installation of ROS.
 `export ROS_MASTER_URI=http://<BOT>.local:11311`
 
 3. In the working directory: 
+
 `source devel/setup.zsh` or `source devel/setup.<any supported shell>`
 
 4. Run the node:
+
 ```roslaunch detect inference_node.launch veh:=<BOT>```
 
 ## Node
