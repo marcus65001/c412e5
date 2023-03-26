@@ -14,7 +14,7 @@ Make sure to have a local installation of ROS.
 `source devel/setup.zsh` or `source devel/setup.<any supported shell>`
 
 4. Run the node:
-```roslaunch detect inference_node.launch veh:=csc22925```
+```roslaunch detect inference_node.launch veh:=<BOT>```
 
 ## Node
 * Inference mode
