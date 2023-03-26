@@ -1,4 +1,4 @@
-# CMPUT 412 Exercise 4 (main branch)
+# CMPUT 412 Exercise 5 (main branch)
 This repository contains all the code for Exercise 5 (on Duckiebot).
 
 ## Usage
